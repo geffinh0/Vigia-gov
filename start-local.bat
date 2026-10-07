@@ -59,8 +59,14 @@ REM --- 4. Sobe o Postgres via Docker -------------------------------------
 where docker >nul 2>&1
 if errorlevel 1 (
     echo [AVISO] Docker nao encontrado no PATH.
-    echo         Suba um PostgreSQL por conta propria e garanta que a
-    echo         DATABASE_URL em .env aponta para ele. Continuando...
+    echo         Sem ele, este script nao consegue subir o banco sozinho.
+    echo         Opcoes:
+    echo           1^) Instale o Docker Desktop: https://www.docker.com/products/docker-desktop
+    echo              e rode este script de novo.
+    echo           2^) Ou instale o PostgreSQL direto: https://www.postgresql.org/download/windows/
+    echo              crie um banco "vigiagov" e ajuste a DATABASE_URL em .env.
+    echo         Continuando sem banco - as proximas etapas provavelmente vao falhar.
+    timeout /t 5 /nobreak >nul
 ) else (
     echo Subindo Postgres ^(docker compose^)...
     docker compose up -d postgres
