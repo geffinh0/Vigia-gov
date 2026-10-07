@@ -1,0 +1,390 @@
+// Vigia-Gov — modelo de dados
+//
+// Objetivo: centralizar dados públicos de agentes políticos brasileiros
+// (todas as esferas e estados): mandatos eletivos, cargos em gabinetes/
+// funções públicas, remuneração, parentescos (nepotismo) e a procedência
+// de cada dado (toda informação aqui deve ser rastreável a uma FonteDados).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Esfera {
+  FEDERAL
+  ESTADUAL
+  MUNICIPAL
+}
+
+enum Poder {
+  EXECUTIVO
+  LEGISLATIVO
+  JUDICIARIO
+}
+
+enum CargoEletivo {
+  PRESIDENTE
+  VICE_PRESIDENTE
+  GOVERNADOR
+  VICE_GOVERNADOR
+  SENADOR
+  DEPUTADO_FEDERAL
+  DEPUTADO_ESTADUAL
+  DEPUTADO_DISTRITAL
+  PREFEITO
+  VICE_PREFEITO
+  VEREADOR
+}
+
+enum SituacaoMandato {
+  EM_EXERCICIO
+  AFASTADO
+  LICENCIADO
+  FINALIZADO
+  CASSADO
+  RENUNCIOU
+  FALECEU
+}
+
+enum TipoVinculo {
+  COMISSIONADO
+  EFETIVO
+  TERCEIRIZADO
+  ESTAGIARIO
+  TEMPORARIO
+  NATUREZA_ESPECIAL
+}
+
+enum TipoRemuneracao {
+  SUBSIDIO
+  SALARIO_BASE
+  VERBA_INDENIZATORIA
+  COTA_PARLAMENTAR
+  AUXILIO
+  DIARIA
+  DECIMO_TERCEIRO
+  FERIAS
+  OUTRO
+}
+
+enum GrauParentesco {
+  CONJUGE
+  COMPANHEIRO
+  FILHO_FILHA
+  PAI_MAE
+  IRMAO_IRMA
+  AVO_AVO
+  NETO_NETA
+  SOBRINHO_SOBRINHA
+  TIO_TIA
+  SOGRO_SOGRA
+  GENRO_NORA
+  CUNHADO_CUNHADA
+  PRIMO_PRIMA
+  OUTRO
+}
+
+enum OrigemParentesco {
+  DECLARACAO_OFICIAL
+  INVESTIGACAO_JORNALISTICA
+  DECISAO_JUDICIAL
+  CURADORIA_MANUAL
+  INFERENCIA_AUTOMATICA
+}
+
+enum ConfiancaParentesco {
+  ALTA
+  MEDIA
+  BAIXA
+}
+
+enum TipoAcessoFonte {
+  API_OFICIAL
+  DOWNLOAD_CSV_OFICIAL
+  PORTAL_MANUAL
+  SCRAPING
+  FOIA_LAI
+}
+
+enum StatusSincronizacao {
+  SUCESSO
+  ERRO
+  EM_ANDAMENTO
+  PARCIAL
+}
+
+enum SituacaoCandidatura {
+  DEFERIDA
+  INDEFERIDA
+  CASSADA
+  RENUNCIA
+  EM_JULGAMENTO
+}
+
+enum SituacaoFinalCandidatura {
+  ELEITO
+  ELEITO_MEDIA
+  NAO_ELEITO
+  SUPLENTE
+  EM_ANDAMENTO
+}
+
+// ---------------------------------------------------------------------------
+// Pessoas e órgãos
+// ---------------------------------------------------------------------------
+
+/// Toda pessoa física rastreada: políticos, servidores nomeados e familiares
+/// citados em vínculos de parentesco. Não armazenamos CPF completo (LGPD) —
+/// apenas uma versão mascarada, no mesmo formato publicado pelos portais de
+/// transparência oficiais.
+model Pessoa {
+  id              String   @id @default(cuid())
+  nome            String
+  nomeSocial      String?
+  cpfMascarado    String? // ex: "***.123.456-**"
+  dataNascimento  DateTime?
+  ehPolitico      Boolean  @default(false)
+  /// Ids estáveis em cada fonte de origem (ex: "camara:12345", "tse:98765"),
+  /// usados para deduplicar a mesma pessoa entre conectores diferentes.
+  idsExternos     String[] @default([])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  mandatos             Mandato[]
+  cargosComissionados  CargoComissionado[]      @relation("TitularCargo")
+  nomeacoesFeitas      CargoComissionado[]      @relation("NomeadoPor")
+  remuneracoes         Remuneracao[]
+  candidaturas         Candidatura[]
+  parentescosOrigem    Parentesco[]             @relation("PessoaA")
+  parentescosDestino   Parentesco[]             @relation("PessoaB")
+
+  @@index([nome])
+}
+
+/// Instituição pública: casas legislativas, executivos, tribunais etc.,
+/// em qualquer esfera e estado.
+model Orgao {
+  id                String   @id @default(cuid())
+  nome              String
+  sigla             String?
+  esfera            Esfera
+  poder             Poder
+  uf                String? // UF (2 letras) quando aplicável
+  municipio         String?
+  siteTransparencia String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  mandatos            Mandato[]
+  cargosComissionados CargoComissionado[]
+  remuneracoes        Remuneracao[]
+
+  @@unique([nome, uf, municipio])
+  @@index([esfera, uf])
+}
+
+// ---------------------------------------------------------------------------
+// Mandatos eletivos
+// ---------------------------------------------------------------------------
+
+model Mandato {
+  id                 String          @id @default(cuid())
+  pessoa             Pessoa          @relation(fields: [pessoaId], references: [id])
+  pessoaId           String
+  orgao              Orgao           @relation(fields: [orgaoId], references: [id])
+  orgaoId            String
+  cargo              CargoEletivo
+  uf                 String
+  municipio          String?
+  partido             String?
+  legislaturaInicio  Int
+  legislaturaFim     Int
+  dataInicio         DateTime
+  dataFim            DateTime?
+  situacao           SituacaoMandato @default(EM_EXERCICIO)
+  idExterno          String? // id do parlamentar na API de origem (ex: Câmara, Senado)
+  fonte              FonteDados      @relation(fields: [fonteId], references: [id])
+  fonteId            String
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([pessoaId])
+  @@index([orgaoId, cargo, uf])
+  @@index([idExterno])
+}
+
+// ---------------------------------------------------------------------------
+// Cargos em gabinetes / funções públicas (alvo típico de nepotismo)
+// ---------------------------------------------------------------------------
+
+model CargoComissionado {
+  id                String      @id @default(cuid())
+  titular           Pessoa      @relation("TitularCargo", fields: [titularId], references: [id])
+  titularId         String
+  orgao             Orgao       @relation(fields: [orgaoId], references: [id])
+  orgaoId           String
+  nomeadoPor        Pessoa?     @relation("NomeadoPor", fields: [nomeadoPorId], references: [id])
+  nomeadoPorId      String?
+  cargo             String // ex: "Assessor Parlamentar", "Chefe de Gabinete"
+  tipoVinculo       TipoVinculo
+  dataInicio        DateTime
+  dataFim           DateTime?
+  remuneracaoMensal Decimal?    @db.Decimal(14, 2)
+  fonte             FonteDados  @relation(fields: [fonteId], references: [id])
+  fonteId           String
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([titularId])
+  @@index([nomeadoPorId])
+  @@index([orgaoId])
+}
+
+// ---------------------------------------------------------------------------
+// Remuneração (série histórica, granularidade mensal)
+// ---------------------------------------------------------------------------
+
+model Remuneracao {
+  id                String          @id @default(cuid())
+  pessoa            Pessoa          @relation(fields: [pessoaId], references: [id])
+  pessoaId          String
+  orgao             Orgao           @relation(fields: [orgaoId], references: [id])
+  orgaoId           String
+  competenciaAno    Int
+  competenciaMes    Int
+  tipo              TipoRemuneracao
+  valor             Decimal         @db.Decimal(14, 2)
+  fonte             FonteDados      @relation(fields: [fonteId], references: [id])
+  fonteId           String
+  createdAt         DateTime        @default(now())
+
+  @@unique([pessoaId, orgaoId, competenciaAno, competenciaMes, tipo])
+  @@index([competenciaAno, competenciaMes])
+}
+
+// ---------------------------------------------------------------------------
+// Parentesco (grafo de nepotismo)
+// ---------------------------------------------------------------------------
+
+model Parentesco {
+  id              String              @id @default(cuid())
+  pessoaA         Pessoa              @relation("PessoaA", fields: [pessoaAId], references: [id])
+  pessoaAId       String
+  pessoaB         Pessoa              @relation("PessoaB", fields: [pessoaBId], references: [id])
+  pessoaBId       String
+  grau            GrauParentesco
+  origem          OrigemParentesco
+  confianca       ConfiancaParentesco
+  observacoes     String?
+  fonte           FonteDados          @relation(fields: [fonteId], references: [id])
+  fonteId         String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([pessoaAId, pessoaBId, grau])
+  @@index([pessoaAId])
+  @@index([pessoaBId])
+}
+
+// ---------------------------------------------------------------------------
+// Eleições e candidaturas
+// ---------------------------------------------------------------------------
+
+model Eleicao {
+  id          String   @id @default(cuid())
+  ano         Int
+  abrangencia Esfera
+  turno       Int      @default(1)
+  dataPleito  DateTime?
+  createdAt   DateTime @default(now())
+
+  candidaturas Candidatura[]
+
+  @@unique([ano, abrangencia, turno])
+}
+
+model Candidatura {
+  id                   String                    @id @default(cuid())
+  pessoa               Pessoa                    @relation(fields: [pessoaId], references: [id])
+  pessoaId             String
+  eleicao              Eleicao                   @relation(fields: [eleicaoId], references: [id])
+  eleicaoId            String
+  cargoPretendido      CargoEletivo
+  uf                   String
+  municipio            String?
+  partido              String
+  coligacao            String?
+  numeroUrna           String?
+  situacaoCandidatura  SituacaoCandidatura
+  situacaoFinal        SituacaoFinalCandidatura?
+  votosRecebidos       Int?
+  bensDeclaradosTotal  Decimal?                  @db.Decimal(16, 2)
+  idExternoTse         String?
+  fonte                FonteDados                @relation(fields: [fonteId], references: [id])
+  fonteId              String
+  createdAt            DateTime                  @default(now())
+
+  bensDeclarados BemDeclarado[]
+
+  @@index([eleicaoId, uf, cargoPretendido])
+  @@index([idExternoTse])
+}
+
+model BemDeclarado {
+  id             String      @id @default(cuid())
+  candidatura    Candidatura @relation(fields: [candidaturaId], references: [id])
+  candidaturaId  String
+  descricao      String
+  valor          Decimal     @db.Decimal(16, 2)
+  createdAt      DateTime    @default(now())
+
+  @@index([candidaturaId])
+}
+
+// ---------------------------------------------------------------------------
+// Proveniência e sincronização — tudo é rastreável à fonte oficial
+// ---------------------------------------------------------------------------
+
+model FonteDados {
+  id                   String          @id @default(cuid())
+  nome                 String          @unique
+  orgaoResponsavel     String
+  esfera               Esfera
+  uf                   String? // null = fonte nacional
+  url                  String
+  tipoAcesso           TipoAcessoFonte
+  confiavel            Boolean         @default(true)
+  ativa                Boolean         @default(true)
+  ultimaSincronizacao  DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  mandatos            Mandato[]
+  cargosComissionados CargoComissionado[]
+  remuneracoes        Remuneracao[]
+  parentescos         Parentesco[]
+  candidaturas        Candidatura[]
+  sincronizacoes      SincronizacaoLog[]
+}
+
+model SincronizacaoLog {
+  id                  String              @id @default(cuid())
+  fonte               FonteDados          @relation(fields: [fonteId], references: [id])
+  fonteId             String
+  conector            String
+  iniciadoEm          DateTime            @default(now())
+  finalizadoEm        DateTime?
+  status              StatusSincronizacao @default(EM_ANDAMENTO)
+  registrosProcessados Int?
+  erro                String?
+
+  @@index([fonteId, iniciadoEm])
+}

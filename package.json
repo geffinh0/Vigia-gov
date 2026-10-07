@@ -1,0 +1,20 @@
+{
+  "name": "vigia-gov",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Plataforma de transparência que centraliza dados públicos de políticos brasileiros de todos os estados: mandatos, remunerações, parentescos e cargos em gabinetes.",
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "esbuild", "prisma"]
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @vigia-gov/api dev",
+    "dev:web": "pnpm --filter @vigia-gov/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @vigia-gov/db generate",
+    "db:migrate": "pnpm --filter @vigia-gov/db migrate",
+    "sync": "pnpm --filter @vigia-gov/api sync"
+  }
+}
