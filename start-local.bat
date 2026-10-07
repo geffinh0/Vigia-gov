@@ -28,13 +28,22 @@ where pnpm >nul 2>&1
 if errorlevel 1 (
     echo pnpm nao encontrado, tentando habilitar via corepack...
     call corepack enable >nul 2>&1
-    call corepack prepare pnpm@10.28.0 --activate
+    call corepack prepare pnpm@10.28.0 --activate >nul 2>&1
     where pnpm >nul 2>&1
     if errorlevel 1 (
-        echo [ERRO] Nao foi possivel preparar o pnpm automaticamente.
-        echo        Rode manualmente: npm install -g pnpm
-        pause
-        exit /b 1
+        echo corepack falhou ^(comum em instalacoes novas do Node^), tentando "npm install -g pnpm"...
+        call npm install -g pnpm
+        REM o PATH da sessao atual pode nao ter o diretorio global do npm ainda;
+        REM pede pro Windows reler o PATH antes de checar de novo.
+        call refreshenv >nul 2>&1
+        where pnpm >nul 2>&1
+        if errorlevel 1 (
+            echo [ERRO] Nao foi possivel instalar o pnpm automaticamente.
+            echo        Abra um novo terminal e rode: npm install -g pnpm
+            echo        Depois rode este script de novo.
+            pause
+            exit /b 1
+        )
     )
 )
 for /f "tokens=*" %%v in ('pnpm -v') do echo pnpm encontrado: %%v
