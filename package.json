@@ -15,6 +15,7 @@
     "typecheck": "pnpm -r typecheck",
     "db:generate": "pnpm --filter @vigia-gov/db generate",
     "db:migrate": "pnpm --filter @vigia-gov/db migrate",
+    "db:migrate:deploy": "pnpm --filter @vigia-gov/db migrate:deploy",
     "sync": "pnpm --filter @vigia-gov/api sync"
   }
 }

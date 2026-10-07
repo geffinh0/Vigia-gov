@@ -89,6 +89,13 @@ comando.
 
 Pré-requisitos: Node 20+, pnpm, Docker (para o Postgres local).
 
+**Windows:** dê duplo clique em `start-local.bat` (ou rode pelo prompt) — ele
+checa Node/pnpm, sobe o Postgres via Docker, instala dependências, aplica as
+migrations e abre a API e o frontend em janelas separadas. Use
+`stop-local.bat` para derrubar o Postgres depois.
+
+**macOS/Linux:**
+
 ```bash
 cp .env.example .env         # ajuste DATABASE_URL/ADMIN_API_KEY se necessário
 docker compose up -d postgres
